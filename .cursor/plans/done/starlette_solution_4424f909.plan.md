@@ -4,7 +4,7 @@ overview: Create a bare-Starlette CLI solution mirroring `fastapi-testclient/`, 
 todos:
   - id: starlette-pkg
     content: "Create starlette/ solution: pyproject.toml, starlette_cli/__init__.py, app.py, cli.py with optional method-prefix argv parsing"
-    status: pending
+    status: completed
 isProject: false
 ---
 

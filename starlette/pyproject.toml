@@ -1,0 +1,9 @@
+[project]
+name = "starlette-testclient"
+version = "0.1.0"
+description = "Bare Starlette + httpx ASGITransport CLI shim"
+requires-python = ">=3.12"
+dependencies = [
+    "starlette",
+    "httpx",
+]
