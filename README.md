@@ -4,9 +4,9 @@ Exploring whether a web API framework can double as a local CLI runtime, with no
 
 LLMs are good at working with CLI tools. But using standard CLI frameworks is a bit cumbersome, if we do expect stateless API interactions.
 
-After creating such CLI tool with couple of frameworks, I realized I am trying to implement a web API framework in a CLI framework.
+After creating such CLI tool with couple of frameworks, I realized I am trying to implement a web API application with a CLI framework.
 
-What if we could use a web API framework to create a CLI tool?
+What if we could use a web API framework to create a CLI tool? Or there is a more friendly way to use exisitng CLI framework to mimic the request-response pattern?
 
 ## Common contract
 
