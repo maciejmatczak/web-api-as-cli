@@ -116,29 +116,23 @@ still send `POST`/`PUT`/`PATCH` with a JSON body for transport, but those reques
 
 ## Benchmark
 
-`benchmark/bench.py` measures four FastAPI-focused cost buckets:
-
-1. subprocess cold-start (what the user waits for)
-2. import time
-3. app + client construction
-4. per-request latency once warm
-
-It also runs bare-Python and stdlib-only subprocess baselines to isolate framework overhead.
+`benchmark/bench.py` compares **subprocess cold-start** across every solution (`ping` and
+`calculate`). Baselines use the same interpreter as the benchmark script (`python -c pass` and a tiny
+stdlib snippet); each solution row uses that solution’s `.venv` Python.
 
 ```bash
-# from repo root
-uv run --project fastapi-testclient python benchmark/bench.py
-python benchmark/bench.py --solution-dir fastapi-testclient --runs 30 --warmup 5
+# from repo root (ensure each solution has been `uv sync`’d)
+python3 benchmark/bench.py
+python3 benchmark/bench.py --runs 30 --warmup 5
+python3 benchmark/bench.py --solution starlette
 ```
 
-Results on this machine (Python 3.12, WSL2):
+Example ballpark on one machine (Python 3.12, WSL2):
 
 | what | median |
 |---|---|
 | bare `python -c pass` | ~9 ms |
-| stdlib only (no FastAPI) | ~15 ms |
-| full FastAPI shim `/ping` | ~218 ms |
-| **net framework overhead** | **~210 ms** |
+| stdlib only | ~15 ms |
+| FastAPI shim `/ping` | ~220 ms |
 
-Most of that cost is import-time (`fastapi`, `pydantic-core`, `anyio`, `starlette`). Once warm,
-app construction is < 0.1 ms and a single request is ~1.7 ms.
+Most of the gap vs bare Python is import + wiring cost inside each CLI process.

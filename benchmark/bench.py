@@ -1,31 +1,27 @@
 #!/usr/bin/env python3
 """
-Benchmark: FastAPI-as-CLI overhead analysis
-============================================
+Benchmark: web-API-as-CLI cold-start comparison
+=============================================
 
-Measures four conceptually distinct cost buckets:
+Measures subprocess cold-start time for each solution (what a user waits for on each
+CLI invocation): Python startup, imports, app wiring, and one request.
 
-  1. subprocess cold-start  – what the user actually waits for
-                              (Python launch + all imports + app init + request)
-  2. import cost            – time to `import fastapi` and friends in-process
-  3. app + client init      – FastAPI() + TestClient() construction after imports
-  4. per-request latency    – a single GET once everything is warm
+Baselines (same interpreter as this script):
 
-Each bucket is sampled N times and reported as min / mean / median / p95 / max.
+  * ``python -c pass`` — interpreter + OS overhead only
+  * stdlib-only subprocess — minimal work without third-party deps
 
-Baseline comparisons
---------------------
-  * bare Python subprocess  (python -c "pass")  → interpreter + OS overhead only
-  * stdlib-only subprocess  (no FastAPI at all) → shows import cost in isolation
+Each solution row uses that solution's ``.venv`` Python so dependency graphs match
+real usage.
 
 Run
 ---
   # from the repo root:
   python benchmark/bench.py
-  python benchmark/bench.py --solution-dir fastapi-testclient --runs 30 --warmup 5
+  python benchmark/bench.py --runs 30 --warmup 5
+  python benchmark/bench.py --solution fastapi-testclient
 
-Each solution directory must contain a uv-managed .venv with the required deps.
-The benchmark locates <solution-dir>/.venv/bin/python automatically.
+Solutions without ``<name>/.venv`` are skipped with a warning (run ``uv sync`` there).
 """
 
 from __future__ import annotations
@@ -45,7 +41,35 @@ from typing import Callable
 # ---------------------------------------------------------------------------
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_SOLUTION = "fastapi-testclient"
+
+# Subprocess argv fragments after ``python`` (module mode ``-m ...``).
+SOLUTION_COMMANDS: list[dict[str, str | list[str]]] = [
+    {
+        "name": "fastapi-testclient",
+        "ping": ["-m", "fastapi_cli.cli", "/ping"],
+        "calculate": ["-m", "fastapi_cli.cli", "/calculate", "x=10", "y=3", "op=add"],
+    },
+    {
+        "name": "cyclopts",
+        "ping": ["-m", "cyclopts_cli", "ping"],
+        "calculate": ["-m", "cyclopts_cli", "calculate", "10", "3"],
+    },
+    {
+        "name": "falcon",
+        "ping": ["-m", "falcon_cli.cli", "/ping"],
+        "calculate": ["-m", "falcon_cli.cli", "GET", "/calculate", "x=10", "y=3"],
+    },
+    {
+        "name": "robyn",
+        "ping": ["-m", "robyn_cli.cli", "/ping"],
+        "calculate": ["-m", "robyn_cli.cli", "GET", "/calculate", "x=10", "y=3"],
+    },
+    {
+        "name": "starlette",
+        "ping": ["-m", "starlette_cli.cli", "GET", "/ping"],
+        "calculate": ["-m", "starlette_cli.cli", "GET", "/calculate", "x=10", "y=3"],
+    },
+]
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +158,7 @@ def _measure(label: str, fn: Callable[[], object], runs: int, warmup: int) -> Sa
 # Benchmark definitions
 # ---------------------------------------------------------------------------
 
+
 def bench_subprocess(
     cmd: list[str],
     runs: int,
@@ -142,6 +167,7 @@ def bench_subprocess(
     cwd: Path | None = None,
 ) -> Sample:
     """Time a full subprocess invocation (cold-start per call)."""
+
     def run():
         result = subprocess.run(
             cmd,
@@ -160,79 +186,12 @@ def bench_subprocess(
     return _measure(label, run, runs=runs, warmup=warmup)
 
 
-def bench_import(runs: int, warmup: int) -> Sample:
-    """In-process: time to import fastapi and starlette from a cold sys.modules."""
-
-    def run():
-        # Remove cached modules to simulate a fresh import each time.
-        to_remove = [k for k in sys.modules if k.startswith(("fastapi", "starlette", "anyio"))]
-        for k in to_remove:
-            del sys.modules[k]
-        import fastapi  # noqa: F401  (we want the side-effect timing)
-        from fastapi.testclient import TestClient  # noqa: F401
-
-    return _measure("import fastapi + TestClient (in-process)", run, runs=runs, warmup=warmup)
-
-
-def bench_app_init(runs: int, warmup: int) -> Sample:
-    """In-process: FastAPI() construction (imports already cached)."""
-    import fastapi  # ensure already imported
-
-    def run():
-        fastapi.FastAPI()
-
-    return _measure("FastAPI() construction (imports warm)", run, runs=runs, warmup=warmup)
-
-
-def bench_client_init(runs: int, warmup: int) -> Sample:
-    """In-process: TestClient() construction around a minimal app."""
-    from fastapi import FastAPI
-    from fastapi.testclient import TestClient
-
-    def run():
-        _app = FastAPI()
-
-        @_app.get("/ping")
-        def _ping():
-            return {}
-
-        TestClient(_app)
-
-    return _measure(
-        "FastAPI() + @route + TestClient() (imports warm)",
-        run,
-        runs=runs,
-        warmup=warmup,
-    )
-
-
-def bench_per_request(runs: int, warmup: int) -> Sample:
-    """In-process: single GET once app + client are fully warm."""
-    from fastapi import FastAPI
-    from fastapi.testclient import TestClient
-
-    _app = FastAPI()
-
-    @_app.get("/calculate")
-    def calculate(x: float, y: float, op: str = "add"):
-        ops = {"add": x + y, "sub": x - y, "mul": x * y}
-        return {"result": ops.get(op, 0)}
-
-    client = TestClient(_app)
-    # one dummy request so the ASGI lifespan is already running
-    client.get("/calculate", params={"x": 1, "y": 1})
-
-    def run():
-        client.get("/calculate", params={"x": 10, "y": 3, "op": "add"})
-
-    return _measure("single GET (app + client fully warm)", run, runs=runs, warmup=warmup)
-
-
 # ---------------------------------------------------------------------------
 # Reporting
 # ---------------------------------------------------------------------------
 
 COL_WIDTHS = (46, 11, 11, 11, 11, 11, 11)
+
 
 def _row(*cells: str) -> str:
     return "  ".join(c.ljust(w) for c, w in zip(cells, COL_WIDTHS))
@@ -262,32 +221,10 @@ def print_report(samples: list[Sample]) -> None:
         print(row)
 
     print(_hline())
-    print(f"  Threshold legend:  {GREEN}green < 100 ms{RESET}  "
-          f"{YELLOW}yellow < 500 ms{RESET}  {RED}red ≥ 500 ms{RESET}")
-    print()
-
-
-def print_overhead_breakdown(samples_by_key: dict[str, Sample]) -> None:
-    """Show a cumulative overhead waterfall for the in-process path."""
-    keys = ["import", "app_init", "client_init", "per_request"]
-    labels = {
-        "import":       "  imports only",
-        "app_init":     "+ app construction",
-        "client_init":  "+ TestClient construction",
-        "per_request":  "  per-request (warm)",
-    }
-    print(BOLD + "  Overhead waterfall (in-process medians)" + RESET)
-    print("  " + "-" * 50)
-    cumulative = 0.0
-    for k in keys:
-        s = samples_by_key.get(k)
-        if s is None:
-            continue
-        if k != "per_request":
-            cumulative += s.median
-            print(f"  {labels[k]:<32} {color_ms(s.median):>16}   cumulative: {color_ms(cumulative)}")
-        else:
-            print(f"  {labels[k]:<32} {color_ms(s.median):>16}")
+    print(
+        f"  Threshold legend:  {GREEN}green < 100 ms{RESET}  "
+        f"{YELLOW}yellow < 500 ms{RESET}  {RED}red ≥ 500 ms{RESET}"
+    )
     print()
 
 
@@ -295,156 +232,131 @@ def print_overhead_breakdown(samples_by_key: dict[str, Sample]) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
-def _resolve_solution(solution_dir: str) -> tuple[Path, Path]:
-    """
-    Return (solution_path, venv_python) for the given solution directory name
-    (relative to repo root) or an absolute path.
-    """
-    sol = Path(solution_dir)
-    if not sol.is_absolute():
-        sol = REPO_ROOT / sol
-    sol = sol.resolve()
 
-    if not sol.is_dir():
-        print(f"ERROR: solution directory not found: {sol}", file=sys.stderr)
-        sys.exit(1)
-
-    venv_python = sol / ".venv" / "bin" / "python"
-    if not venv_python.exists():
-        print(
-            f"ERROR: no .venv found in {sol}\n"
-            f"Run: cd {sol} && uv sync",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    return sol, venv_python
-
-
-def _inject_solution_site_packages(venv_python: Path) -> None:
-    """Add the solution venv's site-packages to sys.path for in-process imports."""
-    try:
-        site_pkgs = subprocess.check_output(
-            [str(venv_python), "-c",
-             "import sysconfig; print(sysconfig.get_path('purelib'))"],
-            text=True,
-        ).strip()
-    except subprocess.CalledProcessError as e:
-        print(f"WARNING: could not determine site-packages: {e}", file=sys.stderr)
-        return
-    if site_pkgs not in sys.path:
-        sys.path.insert(0, site_pkgs)
+def _venv_python(solution_name: str) -> Path | None:
+    """Return path to solution venv Python, or None if missing."""
+    sol = REPO_ROOT / solution_name
+    py = sol / ".venv" / "bin" / "python"
+    if py.is_file():
+        return py
+    print(
+        f"WARNING: skipping {solution_name}: no .venv at {sol}\n"
+        f"         Run: cd {sol} && uv sync",
+        file=sys.stderr,
+    )
+    return None
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument(
-        "--solution-dir",
-        default=DEFAULT_SOLUTION,
-        metavar="DIR",
-        help=f"solution directory containing a uv .venv (default: {DEFAULT_SOLUTION})",
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    p.add_argument("--runs",   type=int, default=20, help="measurement repetitions (default: 20)")
-    p.add_argument("--warmup", type=int, default=3,  help="throw-away warmup runs (default: 3)")
+    p.add_argument("--runs", type=int, default=20, help="measurement repetitions (default: 20)")
+    p.add_argument("--warmup", type=int, default=3, help="throw-away warmup runs (default: 3)")
     p.add_argument(
-        "--no-subprocess",
-        action="store_true",
-        help="skip subprocess benchmarks (faster, skips cold-start measurement)",
+        "--solution",
+        metavar="NAME",
+        default=None,
+        help="run only this solution directory name (e.g. starlette)",
     )
     return p.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    sol_dir, sol_python = _resolve_solution(args.solution_dir)
 
-    # Make solution's packages available for in-process benchmarks.
-    _inject_solution_site_packages(sol_python)
-    # Make solution's source importable (fastapi_cli package lives here).
-    if str(sol_dir) not in sys.path:
-        sys.path.insert(0, str(sol_dir))
+    known = {str(s["name"]) for s in SOLUTION_COMMANDS}
+    if args.solution is not None and args.solution not in known:
+        print(
+            f"ERROR: unknown solution {args.solution!r}. Choose one of: {sorted(known)}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
-    print(textwrap.dedent(f"""
-    {BOLD}{CYAN}FastAPI-as-CLI overhead benchmark{RESET}
-    solution  = {sol_dir.name}
-    runs={args.runs}  warmup={args.warmup}  Python={sys.version.split()[0]}
-    """))
+    solutions = (
+        [s for s in SOLUTION_COMMANDS if s["name"] == args.solution]
+        if args.solution
+        else list(SOLUTION_COMMANDS)
+    )
+
+    bench_py = sys.executable
+
+    print(
+        textwrap.dedent(
+            f"""
+    {BOLD}{CYAN}Web-API-as-CLI cold-start benchmark{RESET}
+    runs={args.runs}  warmup={args.warmup}  baseline_python={bench_py}
+    solutions={", ".join(str(s["name"]) for s in solutions)}
+    """
+        )
+    )
 
     samples: list[Sample] = []
-    samples_by_key: dict[str, Sample] = {}
+    ping_samples: list[Sample] = []
 
-    # -- subprocess baselines ------------------------------------------------
-    if not args.no_subprocess:
-        print("  Measuring subprocess cold-starts (this takes a moment)…")
+    print("  Measuring baselines and subprocess cold-starts…")
 
-        s = bench_subprocess(
-            [str(sol_python), "-c", "pass"],
+    s = bench_subprocess(
+        [bench_py, "-c", "pass"],
+        runs=args.runs,
+        warmup=args.warmup,
+        label="subprocess: python -c pass  (baseline)",
+        cwd=REPO_ROOT,
+    )
+    samples.append(s)
+
+    s = bench_subprocess(
+        [
+            bench_py,
+            "-c",
+            "import json, sys; print(json.dumps({'result': 1+2}))",
+        ],
+        runs=args.runs,
+        warmup=args.warmup,
+        label="subprocess: stdlib only  (no framework)",
+        cwd=REPO_ROOT,
+    )
+    samples.append(s)
+
+    for sol in solutions:
+        name = str(sol["name"])
+        vpy = _venv_python(name)
+        if vpy is None:
+            continue
+        sol_dir = REPO_ROOT / name
+        ping_args = sol["ping"]
+        calc_args = sol["calculate"]
+        assert isinstance(ping_args, list)
+        assert isinstance(calc_args, list)
+
+        s_ping = bench_subprocess(
+            [str(vpy), *ping_args],
             runs=args.runs,
             warmup=args.warmup,
-            label="subprocess: python -c pass  (baseline)",
+            label=f"{name}  ping",
             cwd=sol_dir,
         )
-        samples.append(s)
+        samples.append(s_ping)
+        ping_samples.append(s_ping)
 
-        s = bench_subprocess(
-            [str(sol_python), "-c",
-             "import json, sys; print(json.dumps({'result': 1+2}))"],
+        s_calc = bench_subprocess(
+            [str(vpy), *calc_args],
             runs=args.runs,
             warmup=args.warmup,
-            label="subprocess: stdlib only  (no FastAPI)",
+            label=f"{name}  calculate",
             cwd=sol_dir,
         )
-        samples.append(s)
+        samples.append(s_calc)
 
-        s = bench_subprocess(
-            [str(sol_python), "-m", "fastapi_cli.cli", "/ping"],
-            runs=args.runs,
-            warmup=args.warmup,
-            label=f"subprocess: {sol_dir.name} /ping  (full shim)",
-            cwd=sol_dir,
-        )
-        samples.append(s)
-
-        s = bench_subprocess(
-            [str(sol_python), "-m", "fastapi_cli.cli",
-             "/calculate", "x=10", "y=3", "op=add"],
-            runs=args.runs,
-            warmup=args.warmup,
-            label=f"subprocess: {sol_dir.name} /calculate x=10 y=3",
-            cwd=sol_dir,
-        )
-        samples.append(s)
-
-    # -- in-process breakdown ------------------------------------------------
-    print("  Measuring in-process overhead breakdown…")
-
-    s = bench_import(runs=args.runs, warmup=args.warmup)
-    samples.append(s)
-    samples_by_key["import"] = s
-
-    s = bench_app_init(runs=args.runs, warmup=args.warmup)
-    samples.append(s)
-    samples_by_key["app_init"] = s
-
-    s = bench_client_init(runs=args.runs, warmup=args.warmup)
-    samples.append(s)
-    samples_by_key["client_init"] = s
-
-    s = bench_per_request(runs=args.runs, warmup=args.warmup)
-    samples.append(s)
-    samples_by_key["per_request"] = s
-
-    # -- report --------------------------------------------------------------
     print_report(samples)
-    print_overhead_breakdown(samples_by_key)
 
-    # -- key insight ---------------------------------------------------------
-    if not args.no_subprocess:
-        baseline = samples[0].median      # python -c pass
-        full_shim = samples[2].median     # full CLI shim /ping
-        net_overhead = full_shim - baseline
-        print(f"  {BOLD}Net FastAPI shim overhead vs bare Python:{RESET} {color_ms(net_overhead)}")
-        print(f"  (subprocess full-shim median minus bare-python median)")
+    if ping_samples:
+        fastest = min(ping_samples, key=lambda x: x.median)
+        slowest = max(ping_samples, key=lambda x: x.median)
+        spread = slowest.median - fastest.median
+        print(f"  {BOLD}Ping cold-start (median): fastest{RESET} {fastest.label} "
+              f"({color_ms(fastest.median)})  {BOLD}slowest{RESET} {slowest.label} "
+              f"({color_ms(slowest.median)})  {BOLD}spread{RESET} {color_ms(spread)}")
         print()
 
 
