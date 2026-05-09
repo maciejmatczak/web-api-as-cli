@@ -4,13 +4,13 @@ overview: Create a `cyclopts/` solution directory with a pure-CLI `cyclopts_cli`
 todos:
   - id: create-pyproject
     content: Create cyclopts/pyproject.toml with cyclopts dependency
-    status: pending
+    status: completed
   - id: create-init
     content: Create cyclopts/cyclopts_cli/__init__.py (empty package marker)
-    status: pending
+    status: completed
   - id: create-main
     content: Create cyclopts/cyclopts_cli/__main__.py with ping + calculate commands
-    status: pending
+    status: completed
 isProject: false
 ---
 
