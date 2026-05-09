@@ -127,12 +127,23 @@ python3 benchmark/bench.py --runs 30 --warmup 5
 python3 benchmark/bench.py --solution starlette
 ```
 
-Example ballpark on one machine (Python 3.12, WSL2):
+Sample run on one machine (WSL2, `python3 benchmark/bench.py --runs 30 --warmup 5`, each solution’s own `.venv`):
 
-| what | median |
-|---|---|
-| bare `python -c pass` | ~9 ms |
-| stdlib only | ~15 ms |
-| FastAPI shim `/ping` | ~220 ms |
+| benchmark | min | mean | median | p95 | max |
+|---|---:|---:|---:|---:|---:|
+| `python -c pass` (baseline) | 12.28 ms | 12.81 ms | 12.79 ms | 13.20 ms | 13.26 ms |
+| stdlib only (no framework) | 15.02 ms | 15.80 ms | 15.58 ms | 17.29 ms | 17.45 ms |
+| fastapi-testclient ping | 216.30 ms | 220.54 ms | 219.94 ms | 225.26 ms | 227.23 ms |
+| fastapi-testclient calculate | 221.34 ms | 227.43 ms | 226.90 ms | 234.17 ms | 242.22 ms |
+| cyclopts ping | 56.49 ms | 58.79 ms | 58.70 ms | 60.98 ms | 62.62 ms |
+| cyclopts calculate | 57.70 ms | 59.67 ms | 59.39 ms | 61.29 ms | 63.81 ms |
+| falcon ping | 85.94 ms | 88.81 ms | 88.44 ms | 91.51 ms | 94.14 ms |
+| falcon calculate | 86.01 ms | 88.35 ms | 88.05 ms | 91.43 ms | 95.58 ms |
+| robyn ping | 92.41 ms | 94.46 ms | 94.46 ms | 95.90 ms | 97.69 ms |
+| robyn calculate | 91.88 ms | 94.77 ms | 94.56 ms | 96.76 ms | 99.33 ms |
+| starlette ping | 87.08 ms | 89.19 ms | 89.03 ms | 91.11 ms | 92.06 ms |
+| starlette calculate | 85.72 ms | 88.79 ms | 88.91 ms | 90.91 ms | 92.52 ms |
 
-Most of the gap vs bare Python is import + wiring cost inside each CLI process.
+**Ping cold-start (median):** fastest cyclopts (58.70 ms), slowest fastapi-testclient (219.94 ms), spread 161.24 ms.
+
+Most of the gap vs bare Python for the web-style shims is import and framework wiring inside each cold subprocess.
