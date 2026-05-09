@@ -1,10 +1,12 @@
-# rnd-web-api-as-cli
+# web-api-as-cli
 
 Exploring whether a web API framework can double as a local CLI runtime, with no network socket.
 
-The core idea: instead of starting a real HTTP server, route CLI arguments directly into an
-in-process app object (`TestClient` / `ASGITransport`). The framework still handles routing,
-validation, and serialization, while users invoke it like a normal command.
+LLMs are good at working with CLI tools. But using standard CLI frameworks is a bit cumbersome, if we do expect stateless API interactions.
+
+After creating such CLI tool with couple of frameworks, I realized I am trying to implement a web API framework in a CLI framework.
+
+What if we could use a web API framework to create a CLI tool?
 
 ## Common contract
 
