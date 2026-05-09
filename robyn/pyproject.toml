@@ -1,0 +1,9 @@
+[project]
+name = "robyn-solution"
+version = "0.1.0"
+description = "Robyn app + CLI shim via httpx.ASGITransport"
+requires-python = ">=3.12"
+dependencies = [
+    "robyn>=0.67.0",
+    "httpx>=0.28.1",
+]

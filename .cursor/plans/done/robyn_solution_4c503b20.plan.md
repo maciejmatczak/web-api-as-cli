@@ -4,13 +4,13 @@ overview: Implement the `robyn/` solution directory — app routes and CLI shim 
 todos:
   - id: robyn-dir
     content: "Create robyn/ directory: pyproject.toml, robyn_cli/__init__.py, run uv sync"
-    status: pending
+    status: completed
   - id: robyn-app
     content: Implement robyn_cli/app.py with GET /ping and GET /calculate (typed params, error responses)
-    status: pending
+    status: completed
   - id: robyn-cli
     content: Implement robyn_cli/cli.py CLI shim using httpx.AsyncClient + ASGITransport (asyncio.run), with optional method-prefix argv parsing; verify Robyn exposes ASGI interface at runtime
-    status: pending
+    status: completed
 isProject: false
 ---
 
