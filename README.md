@@ -16,6 +16,12 @@ Every solution implements the same domain operations:
   - response shape: `{"op": "...", "x": ..., "y": ..., "result": ...}`
   - errors are reported for unknown operations and division by zero
 
+Across **HTTP-layer** implementations (`fastapi-testclient/`, `falcon/`, `robyn/`, `starlette/`),
+`/calculate` is exposed as **`GET` only**, with **`x`**, **`y`**, and optional **`op`** as **query
+parameters** — no JSON body on `/calculate` in the mounted apps. CLI shims may still accept other
+HTTP method tokens for transport; non-`GET` requests to `/calculate` should fail at routing (for
+example **405 Method Not Allowed**).
+
 ## Implemented solutions
 
 Each subdirectory is a self-contained experiment with its own `uv`-managed `.venv`.
@@ -85,15 +91,14 @@ Framework: [Starlette](https://www.starlette.io/) with `httpx.ASGITransport`.
 Implemented API routes:
 
 - `GET`, `HEAD` on `/ping`
-- `GET`, `HEAD`, `DELETE`, `POST`, `PUT`, `PATCH` on `/calculate`
+- `GET /calculate?x=&y=&op=`
 
 CLI examples:
 
 ```bash
 python -m starlette_cli.cli GET /ping
 python -m starlette_cli.cli GET /calculate x=10 y=3
-python -m starlette_cli.cli POST /calculate x=10 y=3 op=mul
-python -m starlette_cli.cli PATCH /calculate x=10 y=3 op=div
+python -m starlette_cli.cli GET /calculate x=10 y=3 op=div
 ```
 
 ## HTTP method handling in CLI shims
@@ -105,8 +110,9 @@ For `falcon_cli`, `robyn_cli`, and `starlette_cli`:
 - `GET`/`DELETE`/`HEAD` send `key=value` tokens as query parameters
 - `POST`/`PUT`/`PATCH` send `key=value` tokens as JSON body
 
-Note: endpoint-level support is framework-specific (for example, Starlette currently exposes
-the broadest method set on `/calculate`).
+The mounted apps all expose **`/calculate` as `GET` only** (see **Common contract**). The shim may
+still send `POST`/`PUT`/`PATCH` with a JSON body for transport, but those requests receive **405**
+(or equivalent) from the Starlette/Falcon/Robyn/FastAPI apps on `/calculate`.
 
 ## Benchmark
 

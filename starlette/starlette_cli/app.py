@@ -33,37 +33,17 @@ def _unprocessable(msg: str) -> JSONResponse:
     return JSONResponse(asdict(ErrorResponse(detail=msg)), status_code=422)
 
 
-async def _parse_calculate_inputs(request: Request) -> tuple[float, float, str] | JSONResponse:
-    """Return (x, y, op) or an error JSONResponse."""
-    if request.method in ("GET", "HEAD", "DELETE"):
-        qp = request.query_params
-        try:
-            x = float(qp["x"])
-            y = float(qp["y"])
-        except KeyError:
-            return _unprocessable("Missing required query parameters 'x' and/or 'y'.")
-        except ValueError:
-            return _unprocessable("Query parameters 'x' and 'y' must be valid floats.")
-        op = qp.get("op", "add")
-        return x, y, op
-
-    # POST, PUT, PATCH, OPTIONS — expect JSON body for calculate
+def _parse_calculate_query(request: Request) -> tuple[float, float, str] | JSONResponse:
+    """Parse x, y, op from query parameters; return (x, y, op) or an error JSONResponse."""
+    qp = request.query_params
     try:
-        body = await request.json()
-    except Exception:
-        return _unprocessable("Expected a JSON object body with 'x', 'y', and optional 'op'.")
-    if not isinstance(body, dict):
-        return _unprocessable("JSON body must be an object.")
-    try:
-        x = float(body["x"])
-        y = float(body["y"])
+        x = float(qp["x"])
+        y = float(qp["y"])
     except KeyError:
-        return _unprocessable("Missing required JSON fields 'x' and/or 'y'.")
-    except (TypeError, ValueError):
-        return _unprocessable("JSON fields 'x' and 'y' must be valid floats.")
-    op = body.get("op", "add")
-    if not isinstance(op, str):
-        return _unprocessable("Field 'op' must be a string.")
+        return _unprocessable("Missing required query parameters 'x' and/or 'y'.")
+    except ValueError:
+        return _unprocessable("Query parameters 'x' and 'y' must be valid floats.")
+    op = qp.get("op", "add")
     return x, y, op
 
 
@@ -72,7 +52,7 @@ async def ping(request: Request) -> JSONResponse:
 
 
 async def calculate(request: Request) -> JSONResponse:
-    parsed = await _parse_calculate_inputs(request)
+    parsed = _parse_calculate_query(request)
     if isinstance(parsed, JSONResponse):
         return parsed
     x, y, op = parsed
@@ -100,11 +80,9 @@ async def calculate(request: Request) -> JSONResponse:
     )
 
 
-_CALC_METHODS = ("GET", "HEAD", "DELETE", "POST", "PUT", "PATCH")
-
 app = Starlette(
     routes=[
         Route("/ping", ping, methods=["GET", "HEAD"]),
-        Route("/calculate", calculate, methods=list(_CALC_METHODS)),
+        Route("/calculate", calculate, methods=["GET"]),
     ],
 )

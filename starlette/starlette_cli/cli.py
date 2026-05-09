@@ -7,7 +7,6 @@ Usage
   python -m starlette_cli.cli GET /ping
   python -m starlette_cli.cli GET /calculate x=10 y=3
   python -m starlette_cli.cli GET /calculate x=10 y=3 op=div
-  python -m starlette_cli.cli POST /calculate x=10 y=3 op=add
 """
 
 from __future__ import annotations
