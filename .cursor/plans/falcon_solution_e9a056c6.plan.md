@@ -4,16 +4,16 @@ overview: Create the `falcon/` solution directory with a framework-agnostic CLI 
 todos:
   - id: pyproject
     content: Create falcon/pyproject.toml with falcon>=4.0 and httpx dependencies
-    status: pending
+    status: completed
   - id: init
     content: Create falcon/falcon_cli/__init__.py (empty)
-    status: pending
+    status: completed
   - id: app
     content: "Create falcon/falcon_cli/app.py: inline PingResponse + CalculateResponse dataclasses, PingResource + CalculateResource (ASGI, manual param casting, dataclasses.asdict() for resp.media, error handling)"
-    status: pending
+    status: completed
   - id: cli
     content: "Create falcon/falcon_cli/cli.py: generic shim using httpx.AsyncClient + httpx.ASGITransport, [METHOD] argv, GET→query params, POST/PUT/PATCH→JSON body"
-    status: pending
+    status: completed
 isProject: false
 ---
 

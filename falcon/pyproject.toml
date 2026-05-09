@@ -1,0 +1,9 @@
+[project]
+name = "falcon-testclient"
+version = "0.1.0"
+description = "Falcon ASGI app + CLI shim via httpx.ASGITransport"
+requires-python = ">=3.12"
+dependencies = [
+    "falcon>=4.0",
+    "httpx>=0.28",
+]
